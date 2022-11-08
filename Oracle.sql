@@ -421,15 +421,17 @@ select funkcja, round(avband,0) "Srednio najw. i najm. myszy"
             
     
 -- Zadanie 27 giiiit
+
+-- trzeba policzyc niepowtarzalne przydzialy myszy nie pseudo!
 -- a
-select pojedynczy.pseudo, nvl(pojedynczy.przydzial_myszy,0)+nvl(pojedynczy.myszy_extra,0) Zjada
+select  pojedynczy.pseudo, nvl(pojedynczy.przydzial_myszy,0)+nvl(pojedynczy.myszy_extra,0) Zjada
     from kocury pojedynczy
     where 
         (
-        select Count(ogol.pseudo) kotki
+        select Count(distinct ogol.przydzial_myszy+nvl(ogol.myszy_extra,0)) kotki
         from kocury ogol 
-        where nvl(ogol.przydzial_myszy,0)+nvl(ogol.myszy_extra,0) > nvl(pojedynczy.przydzial_myszy,0)+nvl(pojedynczy.myszy_extra,0)
-        )-1<12
+        where nvl(ogol.przydzial_myszy,0)+nvl(ogol.myszy_extra,0) > nvl(pojedynczy.przydzial_myszy,0)+nvl(pojedynczy.myszy_extra,0) 
+        )<12
     order by 2 DESC;
     
 -- b
@@ -443,16 +445,16 @@ select pseudo, nvl(przydzial_myszy,0)+nvl(myszy_extra,0) zjada
                 from kocury 
                 order by 1 DESC
                 ) where ROWNUM -1<6
-            )
+            );
             
     
 -- c
     
-select k1.pseudo, max(nvl(k1.przydzial_myszy,0)+nvl(k1.myszy_extra,0)) zjada,count(k2.pseudo)
+select k1.pseudo, max(nvl(k1.przydzial_myszy,0)+nvl(k1.myszy_extra,0)) zjada
     from kocury k1
-    left join kocury k2 on nvl(k1.przydzial_myszy,0)+nvl(k1.myszy_extra,0) < nvl(k2.przydzial_myszy,0)+nvl(k2.myszy_extra,0)
+    left join kocury k2 on nvl(k1.przydzial_myszy,0)+nvl(k1.myszy_extra,0) < nvl(k2.przydzial_myszy,0)+nvl(k2.myszy_extra,0) 
     group by k1.pseudo
-    having count(k2.pseudo)-1<6
+    having count(distinct k2.przydzial_myszy+nvl(k2.myszy_extra,0) )< 12
     order by 2 DESC;
     
 -- d
@@ -479,7 +481,6 @@ select to_char(rok) rok, "liczba wystapien"
                                             )
                                     )
                                 )
-
 union all
 select 'Srednia' ,round(avg(kotow),5)
     from (
@@ -604,35 +605,35 @@ from
       case plec when 'D' then nazwa else ' ' end "nazwa bandy",
       case plec when 'D' then 'Kotka' else 'Kocur' end plec,
       TO_CHAR(COUNT(pseudo)) "ILE",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'SZEFUNIO' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "SZEFUNIO",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'BANDZIOR' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "BANDZIOR",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'LOWCZY' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "LOWCZY",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'LAPACZ' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "LAPACZ",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'KOT' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "KOT",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'MILUSIA' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "MILUSIA",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE funkcja = 'DZIELCZY' AND K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "DZIELCZY",
-      TO_CHAR(NVL((select sum(przydzial_myszy + NVL(myszy_extra, 0)) FROM Kocury K WHERE K.nr_bandy= Kocury.nr_bandy AND K.plec = Kocury.plec),0)) "SUMA"
-    from (Kocury join Bandy on Kocury.nr_bandy = Bandy.nr_bandy)
-    group by nazwa, plec, Kocury.nr_bandy
+      TO_CHAR(sum(decode(funkcja,'SZEFUNIO',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "SZEFUNIO",
+      TO_CHAR(sum(decode(funkcja,'BANDZIOR',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "BANDZIOR",
+      TO_CHAR(sum(decode(funkcja,'LOWCZY',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "LOWCZY",  
+      TO_CHAR(sum(decode(funkcja,'LAPACZ',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "LAPACZ",  
+      TO_CHAR(sum(decode(funkcja,'KOT',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "KOT", 
+      TO_CHAR(sum(decode(funkcja,'MILUSIA',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "MILUSIA", 
+      TO_CHAR(sum(decode(funkcja,'DZIELCZY',przydzial_myszy+nvl(myszy_extra,0) ,0) )) "DZIELCZY", 
+      TO_CHAR(sum(przydzial_myszy+nvl(myszy_extra,0))) "SUMA" 
+    from Kocury k
+    join Bandy b on k.nr_bandy = b.nr_bandy
+    group by nazwa, plec, k.nr_bandy
     order by nazwa
 )
 union all
 select 'Z--------------', '------', '--------', '---------', '---------', '--------', '--------', '--------', '--------', '--------', '--------' from DUAL
 union all
-select  'ZJADA RAZEM',
+select 
+'ZJADA RAZEM',
         ' ',
         ' ',
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='SZEFUNIO')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='BANDZIOR')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='LOWCZY')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='LAPACZ')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='KOT')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='MILUSIA')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='DZIELCZY')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury)) from dual;
-
-
-
+        TO_CHAR(sum(decode(funkcja,'SZEFUNIO',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) szefunio,
+        TO_CHAR(sum(decode(funkcja,'BANDZIOR',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) bandzior,
+        TO_CHAR(sum(decode(funkcja,'LOWCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) lowczy,
+        TO_CHAR(sum(decode(funkcja,'LAPACZ',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) lapacz,
+        TO_CHAR(sum(decode(funkcja,'KOT',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) kot ,
+        TO_CHAR(sum(decode(funkcja,'MILUSIA',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) milusia,
+        TO_CHAR(sum(decode(funkcja,'DZIELCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) dzielczy,
+        TO_CHAR(sum(przydzial_myszy + nvl(myszy_extra, 0))) suma
+from kocury
 -- b
 select *
 from
@@ -664,78 +665,22 @@ from
     order by nazwa
   ) on nazwa = nazwa_wiersz and plec = plec_wiersz
 )
-
 union all
 select 'Z--------------', '------', '--------', '---------', '---------', '--------', '--------', '--------', '--------', '--------', '--------' from DUAL
 union all
-select  'ZJADA RAZEM',
+select 
+'ZJADA RAZEM',
         ' ',
         ' ',
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='SZEFUNIO')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='BANDZIOR')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='LOWCZY')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='LAPACZ')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='KOT')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='MILUSIA')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury where funkcja ='DZIELCZY')),
-        TO_CHAR((select sum(przydzial_myszy + nvl(myszy_extra, 0)) from kocury)) from dual;
-
--- b diff
-select *
-from
-(
-  select case plec_wiersz when 'D' then nazwa else ' ' end "nazwa bandy",
-    case plec when 'D' then 'Kotka' else 'Kocur' end plec,
-    to_char(ile) "ile",
-    TO_CHAR(NVL(szef, 0)) szefunio,
-    TO_CHAR(NVL(b,0)) bandzior,
-    TO_CHAR(NVL(low,0)) lowczy,
-    TO_CHAR(NVL(lap,0)) lapacz,
-    TO_CHAR(NVL(kot,0)) kot,
-    TO_CHAR(NVL(mil,0)) milusia,
-    TO_CHAR(NVL(dziel,0)) dzielczy,
-    TO_CHAR(NVL(suma,0)) suma
-  from
-  (
-    select nazwa nazwa_wiersz, plec plec_wiersz, funkcja, przydzial_myszy + nvl(myszy_extra, 0) liczba_myszy from Kocury natural join bandy
-  )
-  pivot (
-      sum(liczba_myszy) 
-      for funkcja in ('SZEFUNIO' szef, 'BANDZIOR' b, 'LOWCZY' low, 'LAPACZ' lap,'KOT' kot, 'MILUSIA' mil, 'DZIELCZY' dziel)
-        )  
-  join 
-  (
-    select nazwa nazwa, plec, count(pseudo) ile, sum(przydzial_myszy + nvl(myszy_extra, 0)) suma
-    from Kocury natural join bandy
-    group by nazwa, plec
-    order by nazwa
-  ) on nazwa = nazwa_wiersz and plec = plec_wiersz
-)
-union all
-select  'ZJADA RAZEM',
-        ' ',
-        ' ',
-        TO_CHAR(NVL(szefunio, 0)) szefunio,
-        TO_CHAR(NVL(bandzior, 0)) bandzior,
-        TO_CHAR(NVL(lowczy, 0)) lowczy,
-        TO_CHAR(NVL(lapacz, 0)) lapacz,
-        TO_CHAR(NVL(kot, 0)) kot,
-        TO_CHAR(NVL(milusia, 0)) milusia,
-        TO_CHAR(NVL(dzielczy, 0)) dzielczy,
-        TO_CHAR(NVL(suma, 0)) suma
-from
-(
-  select      funkcja, przydzial_myszy + NVL(myszy_extra, 0) liczba
-  from        Kocury join Bandy on Kocury.nr_bandy= Bandy.nr_bandy
-) 
-pivot (
-    sum(liczba) 
-    for funkcja IN ('SZEFUNIO' szefunio, 'BANDZIOR' bandzior, 'LOWCZY' lowczy, 'LAPACZ' lapacz,'KOT' kot, 'MILUSIA' milusia, 'DZIELCZY' dzielczy)
-) 
-cross join (select sum(przydzial_myszy + NVL(myszy_extra, 0)) suma from Kocury);
-
-
-
+        TO_CHAR(sum(decode(funkcja,'SZEFUNIO',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) szefunio,
+        TO_CHAR(sum(decode(funkcja,'BANDZIOR',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) bandzior,
+        TO_CHAR(sum(decode(funkcja,'LOWCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) lowczy,
+        TO_CHAR(sum(decode(funkcja,'LAPACZ',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) lapacz,
+        TO_CHAR(sum(decode(funkcja,'KOT',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) kot ,
+        TO_CHAR(sum(decode(funkcja,'MILUSIA',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) milusia,
+        TO_CHAR(sum(decode(funkcja,'DZIELCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) dzielczy,
+        TO_CHAR(sum(przydzial_myszy + nvl(myszy_extra, 0))) suma
+from kocury
 
 
 
