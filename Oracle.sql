@@ -633,7 +633,7 @@ select
         TO_CHAR(sum(decode(funkcja,'MILUSIA',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) milusia,
         TO_CHAR(sum(decode(funkcja,'DZIELCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) dzielczy,
         TO_CHAR(sum(przydzial_myszy + nvl(myszy_extra, 0))) suma
-from kocury
+from kocury;
 -- b
 select *
 from
@@ -680,7 +680,223 @@ select
         TO_CHAR(sum(decode(funkcja,'MILUSIA',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) milusia,
         TO_CHAR(sum(decode(funkcja,'DZIELCZY',przydzial_myszy + nvl(myszy_extra, 0),0) ) ) dzielczy,
         TO_CHAR(sum(przydzial_myszy + nvl(myszy_extra, 0))) suma
-from kocury
+from kocury;
 
+-- Zadanie 34
+DECLARE
+  func Kocury.funkcja%TYPE:='BANDZIOR';
+BEGIN
+  SELECT funkcja INTO func FROM Kocury WHERE funkcja = func GROUP BY funkcja;
+  DBMS_OUTPUT.PUT_LINE(func);
+EXCEPTION
+    when NO_DATA_FOUND then DBMS_OUTPUT.PUT_LINE('BRAK TAKIEGO KOTA');
+    when others then DBMS_OUTPUT.PUT_LINE('Blad');
+END;
+-- Zadanie 35
+DECLARE
+  kocur Kocury%ROWTYPE;
+  nf BOOLEAN:= TRUE;
+BEGIN
+  SELECT * INTO kocur FROM Kocury WHERE pseudo = 'TYGRYS';
+
+  IF (kocur.przydzial_myszy + NVL(kocur.myszy_extra, 0)) * 12 > 700 THEN
+    nf := FALSE;
+    DBMS_OUTPUT.PUT_LINE(kocur.imie || ' calkowity roczny przydzial myszy  > 700');
+  END IF;
+
+  IF kocur.imie LIKE '%A%' THEN
+    nf := FALSE;
+    DBMS_OUTPUT.PUT_LINE(kocur.imie || ' imie zawiera litere A');
+  END IF;
+
+  IF EXTRACT(MONTH FROM kocur.w_stadku_od) = 1 THEN
+    nf := FALSE;
+    DBMS_OUTPUT.PUT_LINE(kocur.imie || ' styczen jest miesiacem przystapienia do stada');
+  END IF;
+
+  IF nf THEN
+    DBMS_OUTPUT.PUT_LINE(kocur.imie || ' nie odpowiada kryteriom');
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN
+  DBMS_OUTPUT.PUT_LINE('BRAK TAKIEGO KOTA');
+END;
+-- Zadanie 36
+
+DECLARE
+  CURSOR kocuryC IS 
+  SELECT * FROM Kocury ORDER BY przydzial_myszy FOR UPDATE OF przydzial_myszy ;
+  
+  kocur kocuryC%ROWTYPE;
+  suma_przydzialow NUMBER;
+  zmienionych_kotow NUMBER:=0;
+  licznik NUMBER:=0;
+  max_funkcji NUMBER;
+  po_dodaniu NUMBER;
+  
+BEGIN
+  SELECT SUM(przydzial_myszy) INTO suma_przydzialow FROM Kocury;
+  
+  LOOP
+    EXIT WHEN suma_przydzialow > 1050;
+    OPEN kocuryC;
+    LOOP
+      FETCH kocuryC INTO kocur;
+      EXIT WHEN kocuryC%NOTFOUND;
+      EXIT WHEN suma_przydzialow > 1050;
+      SELECT max_myszy INTO max_funkcji FROM Funkcje WHERE funkcja = kocur.funkcja;
+      
+      IF kocur.przydzial_myszy=max_funkcji THEN CONTINUE; END IF;
+      
+      po_dodaniu := round(kocur.przydzial_myszy * 1.1);
+
+      IF po_dodaniu > max_funkcji THEN
+        po_dodaniu := max_funkcji;
+      END IF;
+      
+      suma_przydzialow:=suma_przydzialow + (po_dodaniu-kocur.przydzial_myszy);
+      
+      zmienionych_kotow:=zmienionych_kotow+1;
+      
+      UPDATE Kocury
+      SET przydzial_myszy = po_dodaniu
+      WHERE CURRENT OF kocuryC;
+    END LOOP;
+
+    CLOSE kocuryC;
+  END LOOP;
+   DBMS_OUTPUT.PUT_LINE('Calk. przydzial w stadku '||suma_przydzialow||' Zmian '||zmienionych_kotow);
+EXCEPTION
+ WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE(SQLERRM);
+END;
+
+-- Zadanie 37
+DECLARE 
+ CURSOR koty is select pseudo, nvl(myszy_extra,0)+przydzial_myszy calkowity from Kocury order by 2 DESC;
+ kot koty%ROWTYPE;
+BEGIN
+ open koty;
+ DBMS_OUTPUT.PUT_LINE('Nr  Psedonim   Zjada');
+ DBMS_OUTPUT.PUT_LINE('---------------------');
+ FOR i IN 1..5 LOOP
+ fetch koty into kot;
+ 
+ DBMS_OUTPUT.PUT_LINE(i ||'    '|| RPAD(kot.pseudo,7) ||'     '|| kot.calkowity);
+ END LOOP;
+ close koty;
+EXCEPTION
+ WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE(SQLERRM);
+ 
+END;
+
+-- Zadanie 38
+
+-- Zadanie 39
+DECLARE
+  CURSOR bandyC IS SELECT * FROM Bandy;
+  banda bandy%ROWTYPE;
+
+  nr bandy.nr_bandy%TYPE;
+  nazwa_bandy bandy.nazwa%TYPE;
+  teren_bandy bandy.teren%TYPE;
+
+    banda_nr_exc EXCEPTION;
+    banda_exists EXCEPTION;
+    nazwa_exists EXCEPTION;
+    teren_exists EXCEPTION;
+BEGIN
+  nr := 10;
+  nazwa_bandy := 'KAMILSI';
+  teren_bandy := 'POLE';
+
+  IF nr <= 0 THEN
+    RAISE banda_nr_exc;
+  END IF;
+
+  OPEN bandyC;
+
+  LOOP
+    FETCH bandyC INTO banda;
+    EXIT WHEN bandyC%NOTFOUND;
+
+    IF nr = banda.nr_bandy THEN
+      RAISE banda_exists;
+    END IF;
+    IF nazwa_bandy = banda.nazwa THEN
+      RAISE nazwa_exists;
+    END IF;
+    IF teren_bandy = banda.teren THEN
+      RAISE teren_exists;
+    END IF;
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('poprawnie dodano bande nr'||nr);
+  INSERT INTO Bandy VALUES (nr, nazwa_bandy, teren_bandy, NULL);
+
+  EXCEPTION
+  WHEN banda_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nr) || ' już istnieje');
+  WHEN nazwa_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nazwa_bandy) || ' już istnieje');
+  WHEN teren_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(teren_bandy) || ' już istnieje');
+  WHEN banda_nr_exc THEN
+  DBMS_OUTPUT.PUT_LINE('Numer bandy nie może być <= 0');
+  WHEN OTHERS THEN
+  DBMS_OUTPUT.PUT_LINE(SQLERRM);
+END;
+
+-- Zadanie 40
+CREATE OR REPLACE PROCEDURE dodaj_nowa_bande(nr Bandy.nr_bandy%TYPE, nazwa_bandy Bandy.nazwa%TYPE, teren_bandy bandy.teren%TYPE) AS
+  CURSOR bandyC IS SELECT * FROM Bandy;
+  banda bandy%ROWTYPE;
+
+    banda_nr_exc EXCEPTION;
+    banda_exists EXCEPTION;
+    nazwa_exists EXCEPTION;
+    teren_exists EXCEPTION;
+BEGIN
+
+  IF nr <= 0 THEN
+    RAISE banda_nr_exc;
+  END IF;
+
+  OPEN bandyC;
+
+  LOOP
+    FETCH bandyC INTO banda;
+    EXIT WHEN bandyC%NOTFOUND;
+
+    IF nr = banda.nr_bandy THEN
+      RAISE banda_exists;
+    END IF;
+    IF nazwa_bandy = banda.nazwa THEN
+      RAISE nazwa_exists;
+    END IF;
+    IF teren_bandy = banda.teren THEN
+      RAISE teren_exists;
+    END IF;
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('poprawnie dodano bande nr'||nr);
+  INSERT INTO Bandy VALUES (nr, nazwa_bandy, teren_bandy, NULL);
+
+  EXCEPTION
+  WHEN banda_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nr) || ' już istnieje');
+  WHEN nazwa_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nazwa_bandy) || ' już istnieje');
+  WHEN teren_exists THEN
+  DBMS_OUTPUT.PUT_LINE(TO_CHAR(teren_bandy) || ' już istnieje');
+  WHEN banda_nr_exc THEN
+  DBMS_OUTPUT.PUT_LINE('Numer bandy nie może być <= 0');
+  WHEN OTHERS THEN
+  DBMS_OUTPUT.PUT_LINE(SQLERRM);
+END;
+    
+begin
+dodaj_nowa_bande(0,'Kamilsi','GRABISZYN');
+end;
+
+    
+    
 
 
