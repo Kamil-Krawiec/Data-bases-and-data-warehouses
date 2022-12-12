@@ -790,7 +790,54 @@ EXCEPTION
 END;
 
 -- Zadanie 38
+DECLARE
+    liczba_przelozonych NUMBER :=2;
+    max_przelozonych NUMBER;
+    CURSOR koty
+    IS
+    SELECT imie, pseudo, szef 
+    FROM Kocury 
+    WHERE funkcja IN ('KOT', 'MILUSIA');
+    
+BEGIN
+    SELECT MAX(LEVEL) - 1
+    INTO max_przelozonych
+    FROM Kocury
+    CONNECT BY PRIOR szef = pseudo
+    START WITH funkcja IN ('KOT', 'MILUSIA');
+    
+    liczba_przelozonych := LEAST(max_przelozonych, liczba_przelozonych);
 
+    DBMS_OUTPUT.PUT(RPAD('Imie', 15));
+    
+    FOR i IN 1..liczba_przelozonych LOOP
+        DBMS_OUTPUT.PUT(RPAD('|  Szef ' || i, 18));
+    END LOOP;
+    
+    DBMS_OUTPUT.NEW_LINE;
+    DBMS_OUTPUT.PUT(RPAD('-', 13, '-'));
+    
+    FOR i IN 1..liczba_przelozonych LOOP
+        DBMS_OUTPUT.PUT(' --- '||RPAD('-', 13, '-'));
+    END LOOP;
+    
+    DBMS_OUTPUT.NEW_LINE;
+    
+    FOR kot IN koty 
+    LOOP
+        DBMS_OUTPUT.PUT(RPAD(kot.imie, 15));
+        FOR i IN 1..liczba_przelozonych 
+        LOOP
+            IF kot.szef IS NULL THEN 
+                DBMS_OUTPUT.PUT(RPAD('|', 18));   
+            ELSE 
+                SELECT imie, pseudo, szef INTO kot FROM Kocury WHERE kot.szef = pseudo;
+                DBMS_OUTPUT.PUT(RPAD('|  ' || kot.imie, 18)); 
+            END IF;
+        END LOOP;
+        DBMS_OUTPUT.NEW_LINE;
+    END LOOP;
+END;
 -- Zadanie 39
 DECLARE
   CURSOR bandyC IS SELECT * FROM Bandy;
@@ -845,58 +892,380 @@ BEGIN
   DBMS_OUTPUT.PUT_LINE(SQLERRM);
 END;
 
--- Zadanie 40
-CREATE OR REPLACE PROCEDURE dodaj_nowa_bande(nr Bandy.nr_bandy%TYPE, nazwa_bandy Bandy.nazwa%TYPE, teren_bandy bandy.teren%TYPE) AS
-  CURSOR bandyC IS SELECT * FROM Bandy;
-  banda bandy%ROWTYPE;
+-- Zadanie 40 w zadaniu 44
 
-    banda_nr_exc EXCEPTION;
-    banda_exists EXCEPTION;
-    nazwa_exists EXCEPTION;
-    teren_exists EXCEPTION;
+
+--  Zadanie 41
+
+CREATE OR REPLACE TRIGGER wiekszy_od_ostatniej BEFORE INSERT ON BANDY FOR EACH ROW
+DECLARE 
+ max_nr_bandy Bandy.nr_bandy%TYPE;
+ banda_nr_exc EXCEPTION;
 BEGIN
-
-  IF nr <= 0 THEN
-    RAISE banda_nr_exc;
-  END IF;
-
-  OPEN bandyC;
-
-  LOOP
-    FETCH bandyC INTO banda;
-    EXIT WHEN bandyC%NOTFOUND;
-
-    IF nr = banda.nr_bandy THEN
-      RAISE banda_exists;
-    END IF;
-    IF nazwa_bandy = banda.nazwa THEN
-      RAISE nazwa_exists;
-    END IF;
-    IF teren_bandy = banda.teren THEN
-      RAISE teren_exists;
-    END IF;
-  END LOOP;
-  DBMS_OUTPUT.PUT_LINE('poprawnie dodano bande nr'||nr);
-  INSERT INTO Bandy VALUES (nr, nazwa_bandy, teren_bandy, NULL);
-
-  EXCEPTION
-  WHEN banda_exists THEN
-  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nr) || ' już istnieje');
-  WHEN nazwa_exists THEN
-  DBMS_OUTPUT.PUT_LINE(TO_CHAR(nazwa_bandy) || ' już istnieje');
-  WHEN teren_exists THEN
-  DBMS_OUTPUT.PUT_LINE(TO_CHAR(teren_bandy) || ' już istnieje');
-  WHEN banda_nr_exc THEN
-  DBMS_OUTPUT.PUT_LINE('Numer bandy nie może być <= 0');
-  WHEN OTHERS THEN
-  DBMS_OUTPUT.PUT_LINE(SQLERRM);
-END;
+    select MAX(nr_bandy) into max_nr_bandy from Bandy;
+    IF max_nr_bandy+1 <> :NEW.NR_BANDY then :NEW.NR_BANDY:=max_nr_bandy+1;RAISE banda_nr_exc; end if;
     
+EXCEPTION
+ when banda_nr_exc then DBMS_OUTPUT.PUT_LINE('Nowy nr bandy musi byc wiekszy dokladnie o 1 od najwiekszego. Dlatego nr zostal zamieniony na '||:NEW.NR_BANDY);
+ when OTHERS then DBMS_OUTPUT.PUT_LINE(SQLERRM);
+END wiekszy_od_ostatniej;
+    
+ -- Zadanie 42
+
+-- a
+
+CREATE OR REPLACE PACKAGE wirus IS
+    kara NUMBER := 0;
+    nagroda NUMBER := 0;
+    przydzial_tygrysa KOCURY.PRZYDZIAL_MYSZY%TYPE;
+END wirus;
+
+CREATE OR REPLACE TRIGGER zmiana_przydzialu_myszy_tygrysa before update of przydzial_myszy on kocury
+declare
 begin
-dodaj_nowa_bande(0,'Kamilsi','GRABISZYN');
-end;
+ select przydzial_myszy into wirus.przydzial_tygrysa from kocury where pseudo = 'TYGRYS';
+end zmiana_przydzialu_myszy;
 
+
+CREATE OR REPLACE TRIGGER zmiany_przydzialow
+    BEFORE UPDATE OF PRZYDZIAL_MYSZY
+    ON KOCURY
+    FOR EACH ROW
+DECLARE
+BEGIN
+    IF :NEW.funkcja = 'MILUSIA' THEN
+        IF :NEW.przydzial_myszy <= :OLD.przydzial_myszy THEN
+            DBMS_OUTPUT.PUT_LINE('brak zmiany');
+            :NEW.PRZYDZIAL_MYSZY := :OLD.PRZYDZIAL_MYSZY;
+        ELSIF :NEW.przydzial_myszy - :OLD.przydzial_myszy < 0.1 * wirus.przydzial_tygrysa THEN
+            DBMS_OUTPUT.PUT_LINE('podwyzka mniejsza niz 10% Tygrysa');
+            :NEW.przydzial_myszy := :NEW.przydzial_myszy + ROUND(0.1 * wirus.przydzial_tygrysa);
+            :NEW.myszy_extra := NVL(:NEW.myszy_extra, 0) + 5;
+            wirus.kara := wirus.kara + CEIL(0.1 * wirus.przydzial_tygrysa);
+        ELSE
+            wirus.nagroda := wirus.nagroda + 5;
+        END IF;
+    END IF;
+END zmiany_przydzialow;
+
+
+CREATE OR REPLACE TRIGGER po_zmianie
+    AFTER UPDATE OF PRZYDZIAL_MYSZY
+    ON KOCURY
+DECLARE
+    przydzial KOCURY.PRZYDZIAL_MYSZY%TYPE;
+    ekstra    KOCURY.MYSZY_EXTRA%TYPE;
+BEGIN
+    SELECT PRZYDZIAL_MYSZY, MYSZY_EXTRA
+    INTO przydzial, ekstra
+    FROM KOCURY
+    WHERE pseudo = 'TYGRYS';
     
+    przydzial := przydzial - wirus.kara;
+    ekstra := ekstra + wirus.nagroda;
+    
+    IF wirus.kara <> 0 OR wirus.nagroda <> 0 THEN
+        wirus.kara := 0;
+        wirus.nagroda := 0;
+        UPDATE KOCURY
+        SET PRZYDZIAL_MYSZY = przydzial,
+            MYSZY_EXTRA     = ekstra
+        WHERE pseudo = 'TYGRYS';
+    END IF;
+END;
+
+--b
+
+create or replace trigger zmiana_przydzialow 
+for update on Kocury 
+compound trigger
+
+    kara NUMBER := 0;
+    nagroda NUMBER := 0;
+    przydzial_tygrysa KOCURY.PRZYDZIAL_MYSZY%TYPE;
+    ekstra KOCURY.MYSZY_EXTRA%TYPE;
+    
+before statement is 
+begin
+ select przydzial_myszy into przydzial_tygrysa from kocury where pseudo = 'TYGRYS';
+end before statement;
+
+before each row is
+begin
+    IF :NEW.funkcja = 'MILUSIA' THEN
+        IF :NEW.przydzial_myszy <= :OLD.przydzial_myszy THEN
+            DBMS_OUTPUT.PUT_LINE('brak zmiany');
+            :NEW.PRZYDZIAL_MYSZY := :OLD.PRZYDZIAL_MYSZY;
+        ELSIF :NEW.przydzial_myszy - :OLD.przydzial_myszy < 0.1 * przydzial_tygrysa THEN
+            DBMS_OUTPUT.PUT_LINE('podwyzka mniejsza niz 10% Tygrysa');
+            :NEW.przydzial_myszy := :NEW.przydzial_myszy + ROUND(0.1 * przydzial_tygrysa);
+            :NEW.myszy_extra := NVL(:NEW.myszy_extra, 0) + 5;
+            kara := kara + CEIL(0.1 * przydzial_tygrysa);
+        ELSE
+            nagroda := nagroda + 5;
+        END IF;
+    END IF;
+end before each row;
+
+
+after statement is
+begin
+    SELECT MYSZY_EXTRA
+    INTO  ekstra
+    FROM KOCURY
+    WHERE pseudo = 'TYGRYS';
+    
+    przydzial_tygrysa := przydzial_tygrysa - kara;
+    ekstra := ekstra + nagroda;
+    
+    IF kara <> 0 OR nagroda <> 0 THEN
+        kara := 0;
+        nagroda := 0;
+        UPDATE KOCURY
+        SET PRZYDZIAL_MYSZY = przydzial_tygrysa,
+            MYSZY_EXTRA     = ekstra
+        WHERE pseudo = 'TYGRYS';
+    END IF;
+
+end after statement;
+end zmiana_przydzialow;
+
+-- Zadanie 43
+create or replace procedure zadanie43
+AS
+
+ CURSOR funkcjeC is select funkcja from funkcje natural join Kocury group by funkcja order by 1;
+ CURSOR myszyFunkcje is select funkcja,to_char(sum(przydzial_myszy+nvl(myszy_extra,0))) suma from kocury group by funkcja 
+                            union all 
+                            select ' ',to_char(sum(przydzial_myszy+nvl(myszy_extra,0))) from kocury  order by 1 DESC ;
+ CURSOR funkcjeBandy is select nazwa,funkcja,plec,SUM(przydzial_myszy+nvl(myszy_extra,0)) myszyWBandzie 
+                        from Kocury K 
+                        natural join bandy B 
+                        group by B.nazwa,K.funkcja,plec 
+                        order by 1,2,3 DESC;
+ CURSOR informacjeBandy is select count(*) ilosc, SUM(NVL(PRZYDZIAL_MYSZY, 0) + NVL(MYSZY_EXTRA, 0)) sumaMyszy,Bandy.nazwa nazwa, plec 
+                        from Kocury, Bandy where Kocury.nr_bandy = Bandy.nr_bandy
+                        group by Bandy.nazwa, Kocury.plec
+                        order by Bandy.nazwa, plec DESC;
+    
+ fwb funkcjeBandy%ROWTYPE;
+ suma myszyFunkcje%ROWTYPE;
+ 
+BEGIN
+ DBMS_OUTPUT.PUT(RPAD('NAZWA BANDY',15) || LPAD('PLEC',10)|| LPAD('ILE',10));
+ 
+ for fun in funkcjeC loop
+ DBMS_OUTPUT.PUT(LPAD(fun.funkcja,10));
+ end loop;
+ DBMS_OUTPUT.PUT(LPAD('SUMA',12));
+ DBMS_OUTPUT.NEW_LINE;
+ 
+ open funkcjeBandy;
+ fetch funkcjeBandy into fwb;
+ for bandy in informacjeBandy loop
+    
+    if bandy.plec='M' then 
+    DBMS_OUTPUT.PUT(RPAD(bandy.nazwa,15));
+    DBMS_OUTPUT.PUT(LPAD('KOCUR',10)); 
+    else DBMS_OUTPUT.PUT(RPAD(' ',15)); 
+    DBMS_OUTPUT.PUT(LPAD('KOTKA',10)) ; 
+    end if;
+    DBMS_OUTPUT.PUT(LPAD(to_char(bandy.ilosc),8));   
     
 
+    for funkcje in funkcjeC loop
+        if fwb.nazwa = bandy.nazwa and fwb.plec=bandy.plec and funkcje.funkcja=fwb.funkcja then 
+            DBMS_OUTPUT.PUT(LPAD(to_char(fwb.myszyWBandzie),10)); 
+            fetch funkcjeBandy into fwb;
+        else  
+            DBMS_OUTPUT.PUT(LPAD(' 0',10)); 
+        end if;
+    end loop;
+    DBMS_OUTPUT.PUT(LPAD(bandy.sumaMyszy,15));
+    DBMS_OUTPUT.NEW_LINE;
+ end loop;
+ close funkcjeBandy;
+ 
+ DBMS_OUTPUT.PUT(RPAD('Z-',115,'-'));
+ DBMS_OUTPUT.NEW_LINE;
+ DBMS_OUTPUT.PUT(LPAD(' ',35));
+ 
+ for funkcje in myszyFunkcje loop
+    DBMS_OUTPUT.PUT(LPAD(funkcje.suma,12));
+ end loop;
+ 
+ DBMS_OUTPUT.NEW_LINE;
 
+END zadanie43;
+
+execute zadanie43;
+-- Zadanie 44
+
+
+CREATE OR REPLACE PACKAGE dodaj_i_opodatkuj 
+AS
+    PROCEDURE dodaj_nowa_bande(nr Bandy.nr_bandy%TYPE, nazwa_bandy Bandy.nazwa%TYPE, teren_bandy bandy.teren%TYPE);
+    FUNCTION oblicz_podatek(pseudonim Kocury.pseudo%TYPE) RETURN NUMBER;
+END dodaj_i_opodatkuj;
+
+CREATE OR REPLACE PACKAGE BODY dodaj_i_opodatkuj 
+AS
+    PROCEDURE dodaj_nowa_bande(nr Bandy.nr_bandy%TYPE, nazwa_bandy Bandy.nazwa%TYPE, teren_bandy bandy.teren%TYPE) AS
+      CURSOR bandyC IS SELECT * FROM Bandy;
+      banda bandy%ROWTYPE;
+    
+        banda_nr_exc EXCEPTION;
+        banda_exists EXCEPTION;
+        nazwa_exists EXCEPTION;
+        teren_exists EXCEPTION;
+    BEGIN
+    
+      IF nr <= 0 THEN
+        RAISE banda_nr_exc;
+      END IF;
+    
+      OPEN bandyC;
+    
+      LOOP
+        FETCH bandyC INTO banda;
+        EXIT WHEN bandyC%NOTFOUND;
+    
+        IF nr = banda.nr_bandy THEN
+          RAISE banda_exists;
+        END IF;
+        IF nazwa_bandy = banda.nazwa THEN
+          RAISE nazwa_exists;
+        END IF;
+        IF teren_bandy = banda.teren THEN
+          RAISE teren_exists;
+        END IF;
+      END LOOP;
+      
+      INSERT INTO Bandy VALUES (nr, nazwa_bandy, teren_bandy, NULL);
+      DBMS_OUTPUT.PUT_LINE('poprawnie dodano bande');
+      
+      EXCEPTION
+      WHEN banda_exists THEN
+      DBMS_OUTPUT.PUT_LINE(TO_CHAR(nr) || ' już istnieje');
+      WHEN nazwa_exists THEN
+      DBMS_OUTPUT.PUT_LINE(TO_CHAR(nazwa_bandy) || ' już istnieje');
+      WHEN teren_exists THEN
+      DBMS_OUTPUT.PUT_LINE(TO_CHAR(teren_bandy) || ' już istnieje');
+      WHEN banda_nr_exc THEN
+      DBMS_OUTPUT.PUT_LINE('Numer bandy nie może być <= 0');
+      WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE(SQLERRM);
+    END dodaj_nowa_bande;    
+    
+    FUNCTION oblicz_podatek(pseudonim Kocury.pseudo%TYPE) RETURN NUMBER 
+    IS
+        podatek NUMBER;
+        podwladni NUMBER;
+        wrogowie NUMBER; 
+    BEGIN 
+        SELECT CEIL(0.05 * (NVL(przydzial_myszy, 0) + NVL(myszy_extra, 0))) 
+        INTO podatek 
+        FROM Kocury 
+        WHERE pseudo = pseudonim;
+        
+        SELECT COUNT(*) INTO podwladni FROM Kocury WHERE szef = pseudonim;
+        SELECT COUNT(*) INTO wrogowie FROM Wrogowie_Kocurow WHERE pseudo = pseudonim;
+        
+        IF podwladni = 0 THEN 
+            podatek := podatek + 2; 
+        END IF;
+        
+        IF wrogowie = 0 THEN 
+            podatek := podatek + 1;
+        END IF;
+        
+        IF podwladni > 3 AND pseudonim != 'TYGRYS' THEN 
+            podatek := podatek + 1; 
+        END IF;
+        
+        RETURN podatek;
+        
+    END oblicz_podatek;
+END dodaj_i_opodatkuj;
+
+
+BEGIN
+        FOR kot IN (SELECT pseudo FROM Kocury)
+        LOOP
+            DBMS_OUTPUT.PUT_LINE(RPAD(kot.pseudo, 8) || ' podatek: ' || dodaj_i_opodatkuj.oblicz_podatek(kot.pseudo));
+        END LOOP;
+END;
+
+-- Zadanie 45
+CREATE TABLE Dodatki_extra(
+    pseudo VARCHAR2(15) CONSTRAINT dodatki_pseudo_fk REFERENCES Kocury(pseudo),
+    dod_extra NUMBER(3) DEFAULT 0    
+);
+
+CREATE OR REPLACE TRIGGER zad45
+    BEFORE UPDATE OF PRZYDZIAL_MYSZY
+    ON KOCURY
+    FOR EACH ROW
+    WHEN (LOGIN_USER <> 'TYGRYS' AND :NEW.PRZYDZIAL_MYSZY > :OLD.PRZYDZIAL_MYSZY AND :NEW.FUNKCJA = 'MILUSIA')
+DECLARE
+    CURSOR milusie IS SELECT PSEUDO
+                FROM KOCURY
+                WHERE funkcja = 'MILUSIA';
+    ILE NUMBER;
+    POLECENIE VARCHAR2(1000);
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    FOR milusia IN milusie
+        LOOP
+            SELECT COUNT(*) INTO ILE FROM DODATKI_EXTRA WHERE pseudo = milusia.pseudo;
+            IF ILE > 0 THEN
+                POLECENIE:='UPDATE DODATKI_EXTRA SET dod_extra = dod_extra - 10 WHERE :mil_ps = pseudo';
+            ELSE 
+                POLECENIE:='INSERT INTO DODATKI_EXTRA (PSEUDO, DOD_EXTRA) VALUES (:mil_ps, -10)';
+            END IF;
+            EXECUTE IMMEDIATE POLECENIE USING milusia.pseudo;
+        END LOOP;
+        COMMIT;
+    END IF;
+END;
+
+-- Zadanie 46
+CREATE TABLE Wykroczenia 
+(
+    kto VARCHAR2(15) NOT NULL, 
+    kiedy DATE NOT NULL,
+    jakiemu VARCHAR2(15) NOT NULL,
+    operacja VARCHAR2(15) NOT NULL
+);
+
+CREATE OR REPLACE TRIGGER trg_monitor_wykroczenia
+    BEFORE INSERT OR UPDATE OF PRZYDZIAL_MYSZY
+    ON KOCURY
+    FOR EACH ROW
+DECLARE
+    min_mysz FUNKCJE.MIN_MYSZY%TYPE;
+    max_mysz FUNKCJE.MAX_MYSZY%TYPE;
+    curr_data DATE DEFAULT SYSDATE;
+    zdarzenie VARCHAR2(20):= 'UPDATE';
+
+BEGIN
+    SELECT MIN_MYSZY, MAX_MYSZY INTO min_mysz, max_mysz FROM FUNKCJE WHERE FUNKCJA = :NEW.FUNKCJA;
+    
+    IF max_mysz < :NEW.PRZYDZIAL_MYSZY OR min_mysz > :NEW.PRZYDZIAL_MYSZY THEN
+        IF INSERTING THEN 
+            zdarzenie := 'INSERT';
+        END IF;
+        
+        INSERT INTO Wykroczenia(kto, kiedy, jakiemu, operacja) VALUES ('SYS.LOGIN_USER', curr_data, :NEW.PSEUDO, zdarzenie);
+
+        RAISE_APPLICATION_ERROR(-20001,'Przydzial myszy jest poza zakresem przydzialu funkcji kota, nie wykonano zmian.');
+    END IF;
+END;
+SELECT * FROM KOCURY WHERE PSEUDO = 'DAMA';
+SELECT * FROM WYKROCZENIA;
+UPDATE KOCURY SET PRZYDZIAL_MYSZY = 2 WHERE PSEUDO = 'DAMA';
+SELECT * FROM KOCURY WHERE PSEUDO = 'DAMA';
+SELECT * FROM WYKROCZENIA
+ROLLBACK;
+SELECT * FROM KOCURY WHERE PSEUDO = 'DAMA';
+SELECT * FROM WYKROCZENIA;
