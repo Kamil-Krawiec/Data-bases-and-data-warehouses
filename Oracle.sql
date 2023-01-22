@@ -34,6 +34,7 @@ DROP TYPE KontoO FORCE;
 DROP TYPE BODY IncydentO;
 DROP TYPE IncydentO FORCE;
 --Tworzenie tabeli
+ALTER SESSION SET NLS_DATE_FORMAT = "YYYY-MM-DD";
 
 CREATE TABLE Funkcje(
     funkcja varchar2(10) constraint f_funkcja_pk primary key,

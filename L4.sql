@@ -427,14 +427,12 @@ BEGIN
 END;
 
 
-
-CREATE SEQUENCE myszy_seq
-
 -- Wpisywanie myszy na stan
+CREATE SEQUENCE myszy_seq
 DECLARE
-    data_start           DATE           := '2021-01-01';
+    data_start           DATE           := '2020-01-01';
     data_ostatniej_srody DATE           := NEXT_DAY(LAST_DAY(data_start) - 7, 'Wednesday');
-    data_koncowa         DATE           := '2023-01-18';
+    data_koncowa         DATE           := '2023-01-23';
     myszy_mies           NUMBER(5);
 
     TYPE tp IS TABLE OF Kocury.pseudo%TYPE;
@@ -511,12 +509,19 @@ BEGIN
                 data_ostatniej_srody := data_koncowa;
             end if;
     END LOOP;
-
+-- po zebraniu wszystkiego do tabeli puszczenie raz inserta.
     FORALL i in 1..myszki.COUNT
         INSERT INTO Myszy(nr_myszy, lowca, zjadacz, waga_myszy, data_zlowienia, data_wydania)
         VALUES (myszy_seq.NEXTVAL, myszki(i).LOWCA, myszki(i).ZJADACZ, myszki(i).WAGA_MYSZY, myszki(i).DATA_ZLOWIENIA,
                 myszki(i).DATA_WYDANIA);
 END;
+
+
+-- brak daty wydania bo nie bylo jeszcze ostatniejs srody
+select * 
+from Myszy 
+where Extract(MONTH from Data_zlowienia) = 1 and Extract(YEAR from Data_zlowienia) = 2023
+order by Data_zlowienia ;
 
 
 -- Należy więc przygotować procedurę, która umożliwi przyjęcie na stan myszy upolowanych w ciągu dnia przez konkretnego kota
@@ -532,33 +537,38 @@ AS
     zla_data EXCEPTION;
     brak_myszy_o_dacie EXCEPTION;
 BEGIN
+    -- Zadbanie o to, zeby data nie byla do przodu i zeby data zlowienia nie byla ostatnia sroda
     IF data_zlowienia > SYSDATE  OR data_zlowienia = NEXT_DAY(LAST_DAY(data_zlowienia)-7, 'Wednesday')
         THEN RAISE zla_data;
     END IF;
 
+    -- Sprawdzenie czy kot istnieje
     SELECT COUNT(K.pseudo) INTO ile_kotow FROM KOCURY K  WHERE K.pseudo = UPPER(kotPseudo);
     IF ile_kotow = 0 THEN RAISE nie_ma_kota; END IF;
 
+    -- wybranie z jego dane o upolowanych w ciągu dnia myszach dostępne są w, indywidualnej dla każdego kota, zewnętrznej relacji
     EXECUTE IMMEDIATE 'SELECT nr_myszy, waga_myszy FROM Myszy_kota_'|| kotPseudo || ' WHERE data_zlowienia= ''' || data_zlowienia || ''''
         BULK COLLECT INTO tab_nr, tab_wagi;
     IF tab_nr.COUNT = 0 THEN
         RAISE brak_myszy_o_dacie;
     end if;
 
+
     FORALL i in 1..tab_nr.COUNT
         INSERT INTO Myszy VALUES (tab_nr(i), UPPER(kotPseudo), NULL, tab_wagi(i),DATA_ZLOWIENIA, NULL);
 
+    -- usuniecie myszy z zewnetrznej relacji bo juz wyplacona
     EXECUTE IMMEDIATE 'DELETE FROM Myszy_kota_' || kotPseudo || ' WHERE data_zlowienia= ''' || data_zlowienia || '''';
+
     EXCEPTION
         WHEN nie_ma_kota THEN DBMS_OUTPUT.PUT_LINE('BRAK KOTA O PSEUDONIMIE Myszy_kota_'|| UPPER(kotPseudo));
         WHEN zla_data THEN DBMS_OUTPUT.PUT_LINE('ZLA DATA');
         WHEN brak_myszy_o_dacie THEN DBMS_OUTPUT.PUT_LINE('BRAK MYSZY W ZLOWIONEJ DACIE');
 END;
 
+
 -- (założyć, że dane o upolowanych w ciągu dnia myszach dostępne są w, indywidualnej dla każdego kota, zewnętrznej relacji)
 -- Tworzenie tabeli Myszy_kota
-
-
 BEGIN
    FOR kot in (SELECT pseudo FROM Kocury)
     LOOP
@@ -603,10 +613,12 @@ BEGIN
     FROM MYSZY
     WHERE DATA_WYDANIA = NEXT_DAY(LAST_DAY(TRUNC(SYSDATE))-7, 'Wednesday');
 
+    -- Zadbanie o pojedyncza wyplate
     IF ile > 0 THEN
         RAISE powtorna_wyplata;
     end if;
 
+    -- zaladowanie niewydanych myszy
     SELECT *
         BULK COLLECT INTO tab_wierszy
     FROM Myszy
@@ -614,11 +626,13 @@ BEGIN
 
     FOR i IN 1..tab_wierszy.COUNT
         LOOP
+
             WHILE tab_myszy(indeks_zjadacza) = 0 AND liczba_najedzonych < tab_pseudo.COUNT
                 LOOP
                     liczba_najedzonych := liczba_najedzonych + 1;
                     indeks_zjadacza := MOD(indeks_zjadacza + 1, tab_pseudo.COUNT) + 1;
                 END LOOP;
+
             --jezeli wszyscy juz dostali to daj szefowi nad szefami
             IF liczba_najedzonych = tab_pseudo.COUNT THEN
                 tab_zjadaczy(i) := 'TYGRYS';
@@ -628,8 +642,11 @@ BEGIN
                 tab_myszy(indeks_zjadacza) := tab_myszy(indeks_zjadacza) - 1;
             end if;
 
+            -- Jesli po ostatniej srodzie miesiaca to wyplata dopiero w nastepnym miesiacu
             IF NEXT_DAY(LAST_DAY(tab_wierszy(i).DATA_ZLOWIENIA)-7, 'Wednesday') < tab_wierszy(i).DATA_ZLOWIENIA THEN
                 tab_wierszy(i).DATA_WYDANIA := NEXT_DAY(LAST_DAY(ADD_MONTHS(tab_wierszy(i).DATA_ZLOWIENIA,1))-7, 'Wednesday');
+            
+            -- Jesli przed ostatnia sroda miesiaca to wyplata w tym miesiacu w ostatnia srode
             ELSE
                 tab_wierszy(i).DATA_WYDANIA := NEXT_DAY(LAST_DAY(tab_wierszy(i).DATA_ZLOWIENIA)-7, 'Wednesday');
             end if;
@@ -647,3 +664,27 @@ END;
 BEGIN
     Wyplata();
 END;
+
+select * 
+from Myszy 
+where Extract(MONTH from Data_zlowienia) = 1 and Extract(YEAR from Data_zlowienia) = 2023
+order by Data_zlowienia DESC;
+
+
+
+INSERT INTO Myszy_kota_ZERO VALUES(myszy_seq.nextval, 60, '2022-12-28');
+
+INSERT INTO MYSZY_KOTA_TYGRYS VALUES(myszy_seq.nextval, 69, '2022-12-01');
+
+BEGIN
+    przyjmij_na_stan('zero', '2022-12-28');
+end;
+
+BEGIN
+    przyjmij_na_stan('TYGRYS', '2022-12-01');
+end;
+
+-- Widzimy ze mysz tygrysa nie jest jeszcze wydana 
+SELECT * from Myszy order by 1 desc;
+
+
